@@ -5,6 +5,10 @@
 #include <math.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include <Arduino.h>
+#include <ArduinoJson.h>
+
+
 
 
 #define SSID_WIFI "wlan_saltuaria"
@@ -18,14 +22,18 @@
 #define LIGHT_SENSOR_2 A1//Grove - Light Sensor is connected to A1 
 #define DUST_SENSOR 8 //dust sensor
 #define MQ7_SENSOR A2  //CO flying fish sensor (MQ7)
+#define SOUND_SENSOR A6
 /***************** BME280 PINS ****************/
 #define BME_SCK 9
 #define BME_MISO 12
 #define BME_MOSI 11
 #define BME_CS 10
 #define SEALEVELPRESSURE_HPA (1013.25)
+#define LENG 31   //0x42 + 31 bytes equal to 32 bytes for PM10
+
 
 Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
+char buf[LENG];
 
 
 //float Rsensor; //Resistance of sensor in K for light sensor
@@ -33,11 +41,19 @@ int light_1;
 int light_2;
 int dustValue;
 int MQ7Value;   // value read from the CO sensor 
-unsigned long lowpulseoccupancy = 0; //for dust
+int soundValue;
+//dust
+unsigned long lowpulseoccupancy = 0; 
+unsigned long duration;
+unsigned long sampletime_ms = 150050;//sampe 1s ;
+
 float temperature;
 float pressure;
 float altitude;
 float humidity;
+int PM01Value=0;          //define PM1.0 value of the air detector module
+int PM2_5Value=0;         //define PM2.5 value of the air detector module
+int PM10Value=0;         //define PM10 value of the air detector module
 
 
 
@@ -52,29 +68,25 @@ t t_cool = {60000, 150050}; //Other 90 seconds
 t t_read = {150000, 150050}; //final heat
 
 
-
-
-
 WiFiClient net;
 MQTTClient client;
+StaticJsonBuffer<200> jsonBuffer;
+JsonObject& root = jsonBuffer.createObject();
 
-unsigned long lastMillis = 0;
 
-void messageReceived(String &topic, String &payload) {
-  Serial.println("incoming: " + topic + " - " + payload);
-}
+
 
 void setup() {
   Serial.begin(115200);
   delay(100);
   checkBME();
-  client.begin(MQTT_BROKER, net);
-  client.onMessage(messageReceived);
+  Serial1.begin(9600);         //Serial1 used for retrieve data coming frome the PM2.5 Sensor Adapter
+  Serial1.setTimeout(1500); 
   pinMode(MQ7_SENSOR, INPUT);
-
+    
+  client.begin(MQTT_BROKER, net);
 
   ensure_connections();
-  starttime = millis();//get the current time;
 
 }
 
@@ -89,10 +101,10 @@ void loop() {
     lowpulseoccupancy = lowpulseoccupancy+duration;
 
     if (tCheck(&t_heat)) {
-      client.publish("/hello", "world");
       heatReadMQ();
       readValues();
-      printValues();
+      createJson();
+      //printValues();
       print_time(millis());
       tRun(&t_heat);
     }
@@ -139,6 +151,8 @@ void readValues(){
   pressure = bme.readPressure() / 100.0F;
   altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
   humidity = bme.readHumidity();
+  //sound
+  soundValue = analogRead(SOUND_SENSOR);
   
     
 }
@@ -161,7 +175,25 @@ int readDust(){
     return concentration;
 }
 
+void createJson(){
+  root["light1"] = light_1;
+  root["light2"] = light_2;
+  root["dust"] = dustValue;
+  root["CO"] = MQ7Value;
+  root["temperature"] = temperature;
+  root["pressure"] = pressure;
+  root["altitude"] = altitude;
+  root["humidity"] = humidity;
+  root["sound"] = soundValue;
+  root["pm01"] = PM01Value;
+  root["pm2.5"] = PM2_5Value;
+  root["pm10"] = PM10Value;
+
+  root.prettyPrintTo(Serial);
+}
+
 void printValues(){
+    Serial.println("\n\n");
     //LIGHT
     Serial.print("The light values are: ");
     Serial.print(light_1);
@@ -179,21 +211,39 @@ void printValues(){
     //check for warnings (too much CO)
 
     //BME
-    Serial.print("Temperature = ");
+    Serial.print("Temperature: ");
     Serial.print(temperature);
     Serial.println(" *C");
 
-    Serial.print("Pressure = ");
+    Serial.print("Pressure: ");
     Serial.print(pressure);
     Serial.println(" hPa");
 
-    Serial.print("Approx. Altitude = ");
+    Serial.print("Approx. Altitude: ");
     Serial.print(altitude);
     Serial.println(" m");
 
-    Serial.print("Humidity = ");
+    Serial.print("Humidity: ");
     Serial.print(humidity);
     Serial.println(" %");
+
+    //sound
+    Serial.print("Sound:");
+    Serial.println(soundValue);
+
+    //PM
+    Serial.print("PM1.0: ");  
+    Serial.print(PM01Value);
+    Serial.println("  ug/m3");            
+    
+    Serial.print("PM2.5: ");  
+    Serial.print(PM2_5Value);
+    Serial.println("  ug/m3");     
+      
+    Serial.print("PM1 0: ");  
+    Serial.print(PM10Value);
+    Serial.println("  ug/m3");   
+
 }
 
 void ensure_connections(){
@@ -281,5 +331,65 @@ void checkBME(){
         }
     }
     Serial.println();
+}
+
+//function used for checking if the packet sent by the sensor is correct
+char checkValue(char *thebuf, char leng)
+{  
+  char receiveflag=0;
+  int receiveSum=0;
+
+  for(int i=0; i<(leng-2); i++){
+  receiveSum=receiveSum+thebuf[i];
+  }
+  receiveSum=receiveSum + 0x42;
+ 
+  if(receiveSum == ((thebuf[leng-2]<<8)+thebuf[leng-1]))  //check the serial data 
+  {
+    receiveSum = 0;
+    receiveflag = 1;
+  }
+  return receiveflag;
+}
+
+//retrieve pm10 value
+int transmitPM10(char *thebuf)
+{
+  int PM10Val;
+  PM10Val=((thebuf[7]<<8) + thebuf[8]); 
+  return PM10Val;
+}
+
+//retrieve pm1.0 value
+int transmitPM01(char *thebuf)
+{
+  int PM01Val;
+  PM01Val=((thebuf[3]<<8) + thebuf[4]); 
+  return PM01Val;
+}
+
+//retrieve pm2.5 value
+int transmitPM2_5(char *thebuf)
+{
+  int PM2_5Val;
+  PM2_5Val=((thebuf[5]<<8) + thebuf[6]);
+  return PM2_5Val;
+}
+
+void readPM(){
+   if(Serial1.find(0x42)){                   //start to read when detect 0x42
+      Serial1.readBytes(buf,LENG);            //save the packet in a buffer
+
+      if(buf[0] == 0x4d){
+       if(checkValue(buf,LENG)){              //checking correctness of the packet
+        PM01Value = transmitPM10(buf);      
+        PM2_5Value = transmitPM01(buf);
+        PM10Value = transmitPM2_5(buf);
+       
+      }else{
+        Serial.println("error integrity packet");
+      }
+    } 
+  }
 }
 
