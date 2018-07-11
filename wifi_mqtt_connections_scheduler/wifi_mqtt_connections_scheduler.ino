@@ -1,7 +1,9 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <WiFi101.h>
-#include <MQTT.h>
+//#include <MQTT.h>
+#include <PubSubClient.h>
+
 #include <math.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
@@ -14,7 +16,7 @@
 #define SSID_WIFI "wlan_saltuaria"
 #define PASS_WIFI "antlabpolitecnicomilano"
 #define MQTT_BROKER "10.79.1.176"
-#define MQTT_TOPIC "/hello"
+#define MQTT_TOPIC "/envi/1"
 
 
 /***************** SENSORS PINS ****************/
@@ -34,6 +36,8 @@
 
 Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
 char buf[LENG];
+//char jsonChar[120];
+
 
 
 //float Rsensor; //Resistance of sensor in K for light sensor
@@ -54,7 +58,7 @@ float humidity;
 int PM01Value=0;          //define PM1.0 value of the air detector module
 int PM2_5Value=0;         //define PM2.5 value of the air detector module
 int PM10Value=0;         //define PM10 value of the air detector module
-
+int sequenceNumber = 0;
 
 
 typedef struct t  {
@@ -63,17 +67,18 @@ typedef struct t  {
 };
 
 //Tasks and their Schedules.
-t t_heat = {0, 150050}; //Run at beginning (60 sec)
-t t_cool = {60000, 150050}; //Other 90 seconds
-t t_read = {150000, 150050}; //final heat
+t t_heat = {0, 15005}; //Run at beginning (60 sec)
+t t_cool = {6000, 15005}; //Other 90 seconds
+t t_read = {15000, 15005}; //final heat
 
 
 WiFiClient net;
-MQTTClient client;
-StaticJsonBuffer<200> jsonBuffer;
+PubSubClient client(net);
+StaticJsonBuffer<500> jsonBuffer;
 JsonObject& root = jsonBuffer.createObject();
 
-
+String sPayload;
+char* cPayload;
 
 
 void setup() {
@@ -83,8 +88,9 @@ void setup() {
   Serial1.begin(9600);         //Serial1 used for retrieve data coming frome the PM2.5 Sensor Adapter
   Serial1.setTimeout(1500); 
   pinMode(MQ7_SENSOR, INPUT);
-    
-  client.begin(MQTT_BROKER, net);
+
+  client.setServer(MQTT_BROKER, 1883);
+  //client.begin(MQTT_BROKER, net);
 
   ensure_connections();
 
@@ -105,6 +111,15 @@ void loop() {
       readValues();
       createJson();
       //printValues();
+      //convert in json
+      char jsonChar[200];
+      root.printTo(jsonChar, sizeof(jsonChar)); 
+      
+      if (client.publish(MQTT_TOPIC, jsonChar) == true) {
+         Serial.println("Success sending message");
+      } else {
+         Serial.println("Error sending message");
+      }
       print_time(millis());
       tRun(&t_heat);
     }
@@ -176,19 +191,21 @@ int readDust(){
 }
 
 void createJson(){
-  root["light1"] = light_1;
-  root["light2"] = light_2;
+  root["SN"] = sequenceNumber;
+  root["light_1"] = light_1;
+  root["light_2"] = light_2;
   root["dust"] = dustValue;
   root["CO"] = MQ7Value;
   root["temperature"] = temperature;
-  root["pressure"] = pressure;
+  root["presssure"] = pressure;
   root["altitude"] = altitude;
   root["humidity"] = humidity;
   root["sound"] = soundValue;
   root["pm01"] = PM01Value;
-  root["pm2.5"] = PM2_5Value;
+  root["pm2_5"] = PM2_5Value;
   root["pm10"] = PM10Value;
 
+  sequenceNumber++;
   root.prettyPrintTo(Serial);
 }
 
@@ -263,6 +280,7 @@ boolean wifi_connect() {
   Serial.println("Connecting to ");
   Serial.print(SSID_WIFI);
   WiFi.begin(SSID_WIFI, PASS_WIFI);
+
   Serial.print("checking wifi..");
   int i = 0;
   while (WiFi.status() != WL_CONNECTED) {
@@ -285,8 +303,6 @@ boolean mqtt_connect() {
     Serial.print("Attempting MQTT connection...");
     if (client.connect("my_mkr")) {
       Serial.println("connected");
-
-      client.subscribe(MQTT_TOPIC);
       return 1;
     }
     else {
