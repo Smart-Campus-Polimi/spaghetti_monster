@@ -1,7 +1,6 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <WiFi101.h>
-//#include <MQTT.h>
 #include <PubSubClient.h>
 
 #include <math.h>
@@ -183,6 +182,8 @@ void readValues(){
   mq2Value = analogRead(MQ2_SENSOR);
   //co2
   co2Value = analogRead(CO2_SENSOR);
+
+  readPM();
     
 }
 
@@ -409,6 +410,8 @@ int transmitPM2_5(char *thebuf)
 }
 
 void readPM(){
+  //Serial1.readBytes(buf, LENG);
+  //Serial.println(buf);
    if(Serial1.find(0x42)){                   //start to read when detect 0x42
       Serial1.readBytes(buf,LENG);            //save the packet in a buffer
 
@@ -422,6 +425,9 @@ void readPM(){
         Serial.println("error integrity packet");
       }
     } 
+  }
+  else{
+    Serial.println("no pm detected");
   }
 }
 
