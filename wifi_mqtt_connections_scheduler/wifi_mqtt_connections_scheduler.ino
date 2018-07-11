@@ -12,12 +12,18 @@
 
 
 
-
+/************ WIFI CONFIG *************/
 #define SSID_WIFI "wlan_saltuaria"
 #define PASS_WIFI "antlabpolitecnicomilano"
 #define MQTT_BROKER "10.79.1.176"
 #define MQTT_TOPIC "/envi/1"
 
+/*********** TIME CONFIG **************/
+//add one 0 at the end
+#define START_TIME 0
+#define START_COOLING 6000
+#define START_READING 15000
+#define TOTAL_TIME 15005
 
 /***************** SENSORS PINS ****************/
 #define LIGHT_SENSOR A0//Grove - Light Sensor is connected to A0 
@@ -25,6 +31,7 @@
 #define DUST_SENSOR 8 //dust sensor
 #define MQ7_SENSOR A2  //CO flying fish sensor (MQ7)
 #define SOUND_SENSOR A6
+#define MQ2_SENSOR A4
 /***************** BME280 PINS ****************/
 #define BME_SCK 9
 #define BME_MISO 12
@@ -46,10 +53,11 @@ int light_2;
 int dustValue;
 int MQ7Value;   // value read from the CO sensor 
 int soundValue;
+int mq2Value;
 //dust
 unsigned long lowpulseoccupancy = 0; 
 unsigned long duration;
-unsigned long sampletime_ms = 150050;//sampe 1s ;
+unsigned long sampletime_ms = TOTAL_TIME; //sampe time for dust sensor
 
 float temperature;
 float pressure;
@@ -66,15 +74,16 @@ typedef struct t  {
     unsigned long tTimeout;
 };
 
+
 //Tasks and their Schedules.
-t t_heat = {0, 15005}; //Run at beginning (60 sec)
-t t_cool = {6000, 15005}; //Other 90 seconds
-t t_read = {15000, 15005}; //final heat
+t t_heat = {START_TIME, TOTAL_TIME}; //Run at beginning (60 sec)
+t t_cool = {START_COOLING, TOTAL_TIME}; //Other 90 seconds
+t t_read = {START_READING, TOTAL_TIME}; //final heat
 
 
 WiFiClient net;
 PubSubClient client(net);
-StaticJsonBuffer<500> jsonBuffer;
+StaticJsonBuffer<300> jsonBuffer;
 JsonObject& root = jsonBuffer.createObject();
 
 String sPayload;
@@ -90,7 +99,6 @@ void setup() {
   pinMode(MQ7_SENSOR, INPUT);
 
   client.setServer(MQTT_BROKER, 1883);
-  //client.begin(MQTT_BROKER, net);
 
   ensure_connections();
 
@@ -168,7 +176,8 @@ void readValues(){
   humidity = bme.readHumidity();
   //sound
   soundValue = analogRead(SOUND_SENSOR);
-  
+  //mq2
+  mq2Value = analogRead(MQ2_SENSOR);
     
 }
 
@@ -196,6 +205,7 @@ void createJson(){
   root["light_2"] = light_2;
   root["dust"] = dustValue;
   root["CO"] = MQ7Value;
+  root["MQ2"] = mq2Value;
   root["temperature"] = temperature;
   root["presssure"] = pressure;
   root["altitude"] = altitude;
