@@ -30,7 +30,8 @@
 #define LIGHT_SENSOR_2 A1//Grove - Light Sensor is connected to A1 
 #define DUST_SENSOR 8 //dust sensor
 #define MQ7_SENSOR A2  //CO flying fish sensor (MQ7)
-#define SOUND_SENSOR A6
+#define SOUND_SENSOR A5
+#define CO2_SENSOR A6
 #define MQ2_SENSOR A4
 /***************** BME280 PINS ****************/
 #define BME_SCK 9
@@ -54,6 +55,8 @@ int dustValue;
 int MQ7Value;   // value read from the CO sensor 
 int soundValue;
 int mq2Value;
+int co2Value;
+
 //dust
 unsigned long lowpulseoccupancy = 0; 
 unsigned long duration;
@@ -178,6 +181,8 @@ void readValues(){
   soundValue = analogRead(SOUND_SENSOR);
   //mq2
   mq2Value = analogRead(MQ2_SENSOR);
+  //co2
+  co2Value = analogRead(CO2_SENSOR);
     
 }
 
@@ -205,9 +210,10 @@ void createJson(){
   root["light_2"] = light_2;
   root["dust"] = dustValue;
   root["CO"] = MQ7Value;
+  root["CO2"] = co2Value;
   root["MQ2"] = mq2Value;
   root["temperature"] = temperature;
-  root["presssure"] = pressure;
+  root["pressure"] = pressure;
   root["altitude"] = altitude;
   root["humidity"] = humidity;
   root["sound"] = soundValue;
