@@ -20,14 +20,14 @@
 /*********** TIME CONFIG **************/
 //add one 0 at the end
 #define START_TIME 0
-#define START_COOLING 6000
-#define START_READING 15000
-#define TOTAL_TIME 15005
+#define START_COOLING 60000
+#define START_READING 150000
+#define TOTAL_TIME 150050
 
 /***************** SENSORS PINS ****************/
 #define LIGHT_SENSOR A0//Grove - Light Sensor is connected to A0 
 #define LIGHT_SENSOR_2 A1//Grove - Light Sensor is connected to A1 
-#define DUST_SENSOR 8 //dust sensor
+#define DUST_SENSOR 8 //digital dust sensor
 #define MQ7_SENSOR A2  //CO flying fish sensor (MQ7)
 #define SOUND_SENSOR A5
 #define CO2_SENSOR A6
@@ -43,7 +43,7 @@
 
 Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
 char buf[LENG];
-//char jsonChar[120];
+char jsonChar[230];
 
 
 
@@ -122,7 +122,6 @@ void loop() {
       createJson();
       //printValues();
       //convert in json
-      char jsonChar[200];
       root.printTo(jsonChar, sizeof(jsonChar)); 
       
       if (client.publish(MQTT_TOPIC, jsonChar) == true) {
