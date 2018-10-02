@@ -14,7 +14,8 @@
 /************ WIFI CONFIG *************/
 #define SSID_WIFI "wlan_saltuaria"
 #define PASS_WIFI "antlabpolitecnicomilano"
-#define MQTT_BROKER "10.79.1.176"
+//#define MQTT_BROKER "10.79.1.176"
+#define MQTT_BROKER "ec2-35-166-12-244.us-west-2.compute.amazonaws.com"
 #define MQTT_TOPIC "/envi/1"
 
 /*********** TIME CONFIG **************/
@@ -27,7 +28,6 @@
 /***************** SENSORS PINS ****************/
 #define LIGHT_SENSOR A0//Grove - Light Sensor is connected to A0 
 #define LIGHT_SENSOR_2 A1//Grove - Light Sensor is connected to A1 
-#define DUST_SENSOR 8 //digital dust sensor
 #define MQ7_SENSOR A2  //CO flying fish sensor (MQ7)
 #define SOUND_SENSOR A5
 #define CO2_SENSOR A6
@@ -47,19 +47,13 @@ char jsonChar[230];
 
 
 
-//float Rsensor; //Resistance of sensor in K for light sensor
 int light_1;
 int light_2;
-int dustValue;
-int MQ7Value;   // value read from the CO sensor 
 int soundValue;
+int MQ7Value;   // value read from the CO sensor 
 int mq2Value;
 int co2Value;
 
-//dust
-unsigned long lowpulseoccupancy = 0; 
-unsigned long duration;
-unsigned long sampletime_ms = TOTAL_TIME; //sampe time for dust sensor
 
 float temperature;
 float pressure;
@@ -70,6 +64,8 @@ int PM2_5Value=0;         //define PM2.5 value of the air detector module
 int PM10Value=0;         //define PM10 value of the air detector module
 int sequenceNumber = 0;
 
+byte mac_mkr[6];
+uint32_t mac_int; 
 
 typedef struct t  {
     unsigned long tStart;
@@ -103,18 +99,19 @@ void setup() {
   client.setServer(MQTT_BROKER, 1883);
 
   ensure_connections();
-
+  storeMacAddress();
+  
 }
+
+/********** START LOOP ************/
 
 void loop() {
   client.loop();
-
+    
   if (!client.connected()) {
     ensure_connections();
   }
 
-    duration = pulseIn(DUST_SENSOR, LOW);
-    lowpulseoccupancy = lowpulseoccupancy+duration;
 
     if (tCheck(&t_heat)) {
       heatReadMQ();
@@ -147,6 +144,18 @@ void loop() {
    
 }
 
+/********** END LOOP ************/
+
+
+/********** FUNCTIONS ************/
+
+void storeMacAddress(){
+   WiFi.macAddress(mac_mkr);
+  mac_int = *(uint32_t*)mac_mkr;
+  Serial.print("Hi, i'm ");
+  Serial.println(mac_int);
+}
+
 void heatReadMQ(){
    MQ7Value = analogRead(MQ7_SENSOR);
    Serial.print("Heating MQ7");
@@ -168,8 +177,7 @@ void readValues(){
   //light
   light_1 = analogRead(LIGHT_SENSOR); 
   light_2 = analogRead(LIGHT_SENSOR_2); 
-  //dust
-  dustValue = readDust();
+
   //BME
   temperature = bme.readTemperature();
   pressure = bme.readPressure() / 100.0F;
@@ -186,29 +194,12 @@ void readValues(){
     
 }
 
-int readDust(){
-    float ratio = lowpulseoccupancy/(sampletime_ms*10.0);  // Integer percentage 0=>100
-    float concentration = 1.1*pow(ratio,3)-3.8*pow(ratio,2)+520*ratio+0.62; // using spec sheet curve
- 
-    if (concentration > 20000 && concentration < 315000) {
-     Serial.println("Smokes from matches detected!"); 
-    
-    }
-      if (concentration > 315000) {
-     Serial.println("Smokes from cigarettes detected! Or It might be a huge fire! Beware!"); 
-    
-    }
-    
-    lowpulseoccupancy = 0;
 
-    return concentration;
-}
 
 void createJson(){
   root["SN"] = sequenceNumber;
   root["light_1"] = light_1;
   root["light_2"] = light_2;
-  root["dust"] = dustValue;
   root["CO"] = MQ7Value;
   root["CO2"] = co2Value;
   root["MQ2"] = mq2Value;
@@ -220,7 +211,7 @@ void createJson(){
   root["pm01"] = PM01Value;
   root["pm2_5"] = PM2_5Value;
   root["pm10"] = PM10Value;
-
+  root["username_"] = mac_int;
   sequenceNumber++;
   root.prettyPrintTo(Serial);
 }
@@ -232,11 +223,6 @@ void printValues(){
     Serial.print(light_1);
     Serial.print(", ");
     Serial.println(light_2);
-
-    //DUST
-    Serial.print("The dust value is: ");
-    Serial.print(dustValue);
-    Serial.println(" pcs/0.01cf  ");
 
     //CO
     Serial.print("The CO value is: ");
