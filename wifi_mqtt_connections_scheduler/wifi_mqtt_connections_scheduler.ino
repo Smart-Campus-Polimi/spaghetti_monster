@@ -8,22 +8,7 @@
 #include <Adafruit_BME280.h>
 #include <Arduino.h>
 #include <ArduinoJson.h>
-
-
-
-/************ WIFI CONFIG *************/
-//#define SSID_WIFI "HUAWEI-5GCPE-D858"
-//#define PASS_WIFI "Vodafone5G"
-//#define MQTT_BROKER "10.79.1.176"
-#define SSID_WIFI "wlan_saltuaria"
-#define PASS_WIFI "antlabpolitecnicomilano"
-#define MQTT_BROKER "ec2-35-166-12-244.us-west-2.compute.amazonaws.com"
-#define MQTT_TOPIC "smart_campus/environmental/antlab"
-
-/*********** TIME CONFIG **************/
-//add one 0 at the end
-#define START_TIME 0
-#define TOTAL_TIME 1000 //1 second
+#include "config.h"
 
 /***************** SENSORS PINS ****************/
 #define LIGHT_SENSOR A0 //Grove - Light Sensor is connected to A0 
@@ -44,8 +29,6 @@
 Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
 char buf[LENG];
 char jsonChar[230];
-
-
 
 int light_1;
 int light_2;
@@ -73,10 +56,8 @@ typedef struct t  {
 };
 
 
-//Tasks and their Schedules.
-t t_heat = {START_TIME, TOTAL_TIME}; //Run at beginning (60 sec)
-//t t_cool = {START_COOLING, TOTAL_TIME}; //Other 90 seconds
-//t t_read = {START_READING, TOTAL_TIME}; //final heat
+//Task and its schedule.
+t t_heat = {START_TIME, TOTAL_TIME*1000}; //Run at beginning (60 sec)
 
 
 WiFiClient net;
@@ -90,7 +71,8 @@ char* cPayload;
 
 void setup() {
   Serial.begin(115200);
-  delay(100);
+  delay(2000);
+  Serial.println("***** ENVIRONMENTAL SENSOR by zxc v2.0 *****");
   checkBME();
   Serial1.begin(9600);         //Serial1 used for retrieve data coming frome the PM2.5 Sensor Adapter
   Serial1.setTimeout(1500); 
@@ -145,7 +127,6 @@ void loop() {
     */
    
 }
-
 /********** END LOOP ************/
 
 
@@ -168,21 +149,94 @@ void heatReadMQ(){
 }
 
 void readValues(){
-  light_1 = 0; 
-  light_2 = analogRead(LIGHT_SENSOR_2); 
+  int avg_light = 0;
+  float avg_temp = 0;
+  float avg_press = 0;
+  float avg_hum = 0;
+  int avg_sound = 0;
+  int avg_co2 = 0;
+  int avg_pm1 = 0;
+  int avg_pm25 = 0;
+  int avg_pm10 = 0;
 
-  //BME
-  temperature = bme.readTemperature();
-  pressure = bme.readPressure() / 100.0F;
-  //altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
-  altitude = 122.1;
-  humidity = bme.readHumidity();
   
-  soundValue = analogRead(SOUND_SENSOR);
-  mq2Value = 0;
-  co2Value = analogRead(CO2_SENSOR);
+  //for (int i = 0; i<AVG_MES; i++){
+    light_1 = 0; 
+    light_2 = analogRead(LIGHT_SENSOR_2); 
+  
+    //BME
+    temperature = bme.readTemperature();
+    pressure = bme.readPressure() / 100.0F;
+    //altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+    altitude = 122.1;
+    humidity = bme.readHumidity();
+    
+    soundValue = MeasureAnalog();
+    
+    mq2Value = 0;
+    co2Value = analogRead(CO2_SENSOR);
+    
+    readPM();
 
-  readPM();
+/*
+    avg_light += avg_light + light_2;
+    avg_temp += avg_temp + temperature;
+    avg_press += avg_press + pressure;
+    avg_hum += avg_hum + humidity;
+    avg_sound += avg_sound + soundValue;
+    avg_co2 += avg_co2 + co2Value;
+    avg_pm1 += avg_pm1 + PM01Value;
+    avg_pm25 += avg_pm25 + PM2_5Value;
+    avg_pm10 += avg_pm10 + PM10Value;
+  }
+
+  light_2 = avg_light/AVG_MES;
+  temperature = temperature/AVG_MES;
+  pressure = avg_press/AVG_MES;
+  humidity = avg_hum/AVG_MES;
+  soundValue = avg_sound/AVG_MES;
+  co2Value = avg_co2/AVG_MES;
+  PM01Value = PM01Value/AVG_MES;
+  PM2_5Value = PM2_5Value/AVG_MES;
+  PM10Value = PM10Value/AVG_MES;
+
+  avg_light = 0;
+  avg_temp = 0;
+  avg_press = 0;
+  avg_hum = 0;
+  avg_sound = 0;
+  avg_co2 = 0;
+  avg_pm1 = 0;
+  avg_pm25 = 0;
+  avg_pm10 = 0;
+  */
+}
+int MeasureAnalog()
+{
+    int MicSamples = 1024*2;
+    
+    int signalAvg = 0, signalMax = 0, signalMin = 1024, t0 = millis();
+    for (int i = 0; i < MicSamples; i++)
+    {
+        int k = analogRead(SOUND_SENSOR);
+        signalMin = min(signalMin, k);
+        signalMax = max(signalMax, k);
+        signalAvg += k;
+    }
+    signalAvg /= MicSamples;
+ 
+  
+    /*
+    Serial.print("Time: " + String(millis() - t0));
+    Serial.print(" Min: " + String(signalMin));
+    Serial.print(" Max: " + String(signalMax));
+    Serial.print(" Avg: " + String(signalAvg));
+    Serial.print(" Span: " + String(signalMax - signalMin));
+    Serial.print(", " + String(signalMax - signalAvg));
+    Serial.print(", " + String(signalAvg - signalMin));
+    Serial.println("");
+    */
+    return signalAvg;
 }
 
 
@@ -221,8 +275,8 @@ void ensure_connections(){
 }
 
 boolean wifi_connect() {
-  Serial.println("Connecting to ");
-  Serial.print(SSID_WIFI);
+  Serial.print("Connecting to ");
+  Serial.println(SSID_WIFI);
   
   Serial.print("checking wifi..");
   int i = 0;
