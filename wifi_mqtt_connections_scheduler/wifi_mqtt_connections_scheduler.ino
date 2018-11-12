@@ -12,21 +12,21 @@
 
 
 /************ WIFI CONFIG *************/
+//#define SSID_WIFI "HUAWEI-5GCPE-D858"
+//#define PASS_WIFI "Vodafone5G"
+//#define MQTT_BROKER "10.79.1.176"
 #define SSID_WIFI "wlan_saltuaria"
 #define PASS_WIFI "antlabpolitecnicomilano"
-//#define MQTT_BROKER "10.79.1.176"
 #define MQTT_BROKER "ec2-35-166-12-244.us-west-2.compute.amazonaws.com"
-#define MQTT_TOPIC "/envi/1"
+#define MQTT_TOPIC "smart_campus/environmental/antlab"
 
 /*********** TIME CONFIG **************/
 //add one 0 at the end
 #define START_TIME 0
-#define START_COOLING 60000
-#define START_READING 150000
-#define TOTAL_TIME 150050
+#define TOTAL_TIME 1000 //1 second
 
 /***************** SENSORS PINS ****************/
-#define LIGHT_SENSOR A0//Grove - Light Sensor is connected to A0 
+#define LIGHT_SENSOR A0 //Grove - Light Sensor is connected to A0 
 #define LIGHT_SENSOR_2 A1//Grove - Light Sensor is connected to A1 
 #define MQ7_SENSOR A2  //CO flying fish sensor (MQ7)
 #define SOUND_SENSOR A5
@@ -75,8 +75,8 @@ typedef struct t  {
 
 //Tasks and their Schedules.
 t t_heat = {START_TIME, TOTAL_TIME}; //Run at beginning (60 sec)
-t t_cool = {START_COOLING, TOTAL_TIME}; //Other 90 seconds
-t t_read = {START_READING, TOTAL_TIME}; //final heat
+//t t_cool = {START_COOLING, TOTAL_TIME}; //Other 90 seconds
+//t t_read = {START_READING, TOTAL_TIME}; //final heat
 
 
 WiFiClient net;
@@ -97,9 +97,9 @@ void setup() {
   pinMode(MQ7_SENSOR, INPUT);
 
   client.setServer(MQTT_BROKER, 1883);
-
+  
   ensure_connections();
-  storeMacAddress();
+  mac_int = storeMacAddress();
   
 }
 
@@ -114,7 +114,7 @@ void loop() {
 
 
     if (tCheck(&t_heat)) {
-      heatReadMQ();
+      //heatReadMQ();
       readValues();
       createJson();
       //printValues();
@@ -129,7 +129,8 @@ void loop() {
       print_time(millis());
       tRun(&t_heat);
     }
-    
+
+    /*
     if (tCheck(&t_cool)) {
       cool();
       print_time(millis());
@@ -141,6 +142,7 @@ void loop() {
       print_time(millis());
       tRun(&t_read);
     }
+    */
    
 }
 
@@ -149,49 +151,38 @@ void loop() {
 
 /********** FUNCTIONS ************/
 
-void storeMacAddress(){
-   WiFi.macAddress(mac_mkr);
-  mac_int = *(uint32_t*)mac_mkr;
+int storeMacAddress(){
+  int mac;
+  WiFi.macAddress(mac_mkr);
+  mac = *(uint32_t*)mac_mkr;
   Serial.print("Hi, i'm ");
-  Serial.println(mac_int);
+  Serial.println(mac);
+
+  return mac;
 }
 
 void heatReadMQ(){
    MQ7Value = analogRead(MQ7_SENSOR);
-   Serial.print("Heating MQ7");
-   analogWrite(MQ7_SENSOR, HIGH); // HIGH = 255
-}
-
-void cool(){
-    Serial.print("Cooling MQ7");
-    analogWrite(MQ7_SENSOR, 71.4); // 255x1400/5000
-
-}
-
-void miniHeat(){
-    Serial.print("New mini-heat for MQ7");
-    analogWrite(MQ7_SENSOR, HIGH);
+   //Serial.print("Heating MQ7");
+   //analogWrite(MQ7_SENSOR, HIGH); // HIGH = 255
 }
 
 void readValues(){
-  //light
-  light_1 = analogRead(LIGHT_SENSOR); 
+  light_1 = 0; 
   light_2 = analogRead(LIGHT_SENSOR_2); 
 
   //BME
   temperature = bme.readTemperature();
   pressure = bme.readPressure() / 100.0F;
-  altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+  //altitude = bme.readAltitude(SEALEVELPRESSURE_HPA);
+  altitude = 122.1;
   humidity = bme.readHumidity();
-  //sound
+  
   soundValue = analogRead(SOUND_SENSOR);
-  //mq2
-  mq2Value = analogRead(MQ2_SENSOR);
-  //co2
+  mq2Value = 0;
   co2Value = analogRead(CO2_SENSOR);
 
   readPM();
-    
 }
 
 
@@ -216,55 +207,6 @@ void createJson(){
   root.prettyPrintTo(Serial);
 }
 
-void printValues(){
-    Serial.println("\n\n");
-    //LIGHT
-    Serial.print("The light values are: ");
-    Serial.print(light_1);
-    Serial.print(", ");
-    Serial.println(light_2);
-
-    //CO
-    Serial.print("The CO value is: ");
-    Serial.println(MQ7Value);
-    //check for warnings (too much CO)
-
-    //BME
-    Serial.print("Temperature: ");
-    Serial.print(temperature);
-    Serial.println(" *C");
-
-    Serial.print("Pressure: ");
-    Serial.print(pressure);
-    Serial.println(" hPa");
-
-    Serial.print("Approx. Altitude: ");
-    Serial.print(altitude);
-    Serial.println(" m");
-
-    Serial.print("Humidity: ");
-    Serial.print(humidity);
-    Serial.println(" %");
-
-    //sound
-    Serial.print("Sound:");
-    Serial.println(soundValue);
-
-    //PM
-    Serial.print("PM1.0: ");  
-    Serial.print(PM01Value);
-    Serial.println("  ug/m3");            
-    
-    Serial.print("PM2.5: ");  
-    Serial.print(PM2_5Value);
-    Serial.println("  ug/m3");     
-      
-    Serial.print("PM1 0: ");  
-    Serial.print(PM10Value);
-    Serial.println("  ug/m3");   
-
-}
-
 void ensure_connections(){
   if (wifi_connect()){
     if(!mqtt_connect()){
@@ -281,10 +223,14 @@ void ensure_connections(){
 boolean wifi_connect() {
   Serial.println("Connecting to ");
   Serial.print(SSID_WIFI);
-  WiFi.begin(SSID_WIFI, PASS_WIFI);
-
+  
   Serial.print("checking wifi..");
   int i = 0;
+
+  if(WiFi.status() != WL_CONNECTED){
+      WiFi.begin(SSID_WIFI, PASS_WIFI);
+  }
+  
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
     delay(500);
@@ -416,3 +362,51 @@ void readPM(){
   }
 }
 
+void printValues(){
+    Serial.println("\n\n");
+    //LIGHT
+    Serial.print("The light values are: ");
+    Serial.print(light_1);
+    Serial.print(", ");
+    Serial.println(light_2);
+
+    //CO
+    Serial.print("The CO value is: ");
+    Serial.println(MQ7Value);
+    //check for warnings (too much CO)
+
+    //BME
+    Serial.print("Temperature: ");
+    Serial.print(temperature);
+    Serial.println(" *C");
+
+    Serial.print("Pressure: ");
+    Serial.print(pressure);
+    Serial.println(" hPa");
+
+    Serial.print("Approx. Altitude: ");
+    Serial.print(altitude);
+    Serial.println(" m");
+
+    Serial.print("Humidity: ");
+    Serial.print(humidity);
+    Serial.println(" %");
+
+    //sound
+    Serial.print("Sound:");
+    Serial.println(soundValue);
+
+    //PM
+    Serial.print("PM1.0: ");  
+    Serial.print(PM01Value);
+    Serial.println("  ug/m3");            
+    
+    Serial.print("PM2.5: ");  
+    Serial.print(PM2_5Value);
+    Serial.println("  ug/m3");     
+      
+    Serial.print("PM1 0: ");  
+    Serial.print(PM10Value);
+    Serial.println("  ug/m3");   
+
+}
