@@ -50,6 +50,6 @@ BROKER
 #endif
 
 #if BROKER == 3
-  #define MQTT_BROKER "34.222.27.8"
+  #define MQTT_BROKER "54.68.43.185"
 #endif
 /*********** END BROKER ***********/
