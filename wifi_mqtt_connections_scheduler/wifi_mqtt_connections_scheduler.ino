@@ -19,9 +19,10 @@
 #define MQ2_SENSOR A4
 /***************** BME280 PINS ****************/
 #define BME_SCK 9
+#define BME_CS 10
 #define BME_MISO 12
 #define BME_MOSI 11
-#define BME_CS 10
+
 #define SEALEVELPRESSURE_HPA (1013.25)
 #define LENG 31   //0x42 + 31 bytes equal to 32 bytes for PM10
 
@@ -173,7 +174,7 @@ void readValues(){
     
     soundValue = MeasureAnalog();
     
-    mq2Value = 0;
+    mq2Value = analogRead(MQ2_SENSOR);
     co2Value = analogRead(CO2_SENSOR);
     
     readPM();
